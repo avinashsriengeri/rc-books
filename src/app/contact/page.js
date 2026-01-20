@@ -29,7 +29,7 @@ export default function ContactPage() {
 
       const data = await response.json();
 
-      if (response.ok) {
+      if (data.success) {
         setSubmitStatus({ type: 'success', message: 'Thank you for contacting us! We\'ll get back to you soon.' });
         // Reset form
         setFormData({
@@ -43,7 +43,7 @@ export default function ContactPage() {
       }
     } catch (error) {
       console.error('Form submission error:', error);
-      setSubmitStatus({ type: 'error', message: 'Failed to submit form. Please try again later.' });
+      setSubmitStatus({ type: 'error', message: 'Network error. Please check your connection and try again.' });
     } finally {
       setIsSubmitting(false);
     }

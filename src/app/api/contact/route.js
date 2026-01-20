@@ -1,76 +1,116 @@
-import { NextResponse } from 'next/server';
-
 export async function POST(request) {
   try {
-    // Get the form data from the request
     const body = await request.json();
     const { firstName, lastName, email, message } = body;
 
     // Validate required fields
     if (!firstName || !lastName || !email || !message) {
-      return NextResponse.json(
-        { error: 'All fields are required' },
+      return Response.json(
+        { success: false, error: "All fields are required" },
         { status: 400 }
       );
     }
 
-    // Get the API endpoint from environment variables
-    const apiEndpoint = process.env.NEXT_PUBLIC_CONSOLE_API_URL;
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return Response.json(
+        { success: false, error: "Invalid email format" },
+        { status: 400 }
+      );
+    }
 
-    if (!apiEndpoint) {
-      console.error('NEXT_PUBLIC_CONSOLE_API_URL is not defined in environment variables');
-      return NextResponse.json(
-        { error: 'API endpoint not configured' },
+    // Get environment variables
+    const apiUrl = process.env.NEXT_PUBLIC_CONSOLE_API_URL;
+    const token = process.env.RELIANCE_COMPANY_TOKEN;
+
+    if (!apiUrl || !token) {
+      console.error("Missing environment variables");
+      return Response.json(
+        { success: false, error: "Server configuration error" },
         { status: 500 }
       );
     }
 
-    // Prepare the data to send to your external API
-    const contactData = {
-      firstName,
-      lastName,
-      email,
-      message,
-      source: 'RC Books',
-      submittedAt: new Date().toISOString(),
-    };
+    // Format data for console API
+    // Combine firstName + lastName → name
+    const fullName = `${firstName} ${lastName}`.trim();
+    
+    // Format as ARRAY (console API requirement)
+    const enquiryData = [{
+      name: fullName,                    // Combined name
+      email: email.trim(),
+      phone: "",                          // Required but can be empty
+      source: "rc_books_form",            // Change this per landing page
+      location: "",                       // Required but can be empty
+      comments: message.trim()            // message → comments
+    }];
 
-    // Make the API call to your external endpoint
-    const response = await fetch(apiEndpoint, {
-      method: 'POST',
+    // Build URL with token
+    const url = new URL(apiUrl);
+    url.searchParams.append("token", token);
+
+    // Call console API
+    const response = await fetch(url.toString(), {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify(contactData),
+      body: JSON.stringify(enquiryData),
     });
 
-    // Check if the external API call was successful
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error('External API error:', errorData);
-      return NextResponse.json(
-        { error: 'Failed to submit contact form' },
-        { status: response.status }
+    // Handle response
+    const responseText = await response.text();
+    
+    if (!responseText || responseText.trim() === '') {
+      if (response.status === 200) {
+        return Response.json(
+          { success: true, message: "Enquiry submitted successfully" },
+          { status: 200 }
+        );
+      }
+      return Response.json(
+        { success: false, error: "Empty response from server" },
+        { status: 500 }
       );
     }
 
-    // Get the response from the external API
-    const responseData = await response.json();
+    // Parse JSON response
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (parseError) {
+      if (response.status === 200) {
+        return Response.json(
+          { success: true, message: "Enquiry submitted successfully" },
+          { status: 200 }
+        );
+      }
+      return Response.json(
+        { success: false, error: "Invalid response from server" },
+        { status: 500 }
+      );
+    }
 
-    // Return success response
-    return NextResponse.json(
-      {
-        success: true,
-        message: 'Contact form submitted successfully',
-        data: responseData,
-      },
-      { status: 200 }
-    );
-
+    // Check if console API returned success
+    if (response.ok && responseData.status === 'success') {
+      return Response.json(
+        { success: true, message: "Enquiry submitted successfully" },
+        { status: 200 }
+      );
+    } else {
+      return Response.json(
+        { 
+          success: false, 
+          error: responseData.message || "Failed to submit enquiry" 
+        },
+        { status: response.status || 500 }
+      );
+    }
   } catch (error) {
-    console.error('Contact form API error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error', details: error.message },
+    console.error("Contact form error:", error);
+    return Response.json(
+      { success: false, error: "An unexpected error occurred" },
       { status: 500 }
     );
   }
